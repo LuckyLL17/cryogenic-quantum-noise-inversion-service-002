@@ -1,0 +1,11 @@
+{
+  "name": "cryogenic-quantum-noise-inversion-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "低温量子器件实验数据校准与噪声谱反演后端服务",
+  "scripts": {
+    "start": "node --experimental-strip-types src/http/server.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  }
+}
