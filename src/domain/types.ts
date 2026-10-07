@@ -85,6 +85,7 @@ export type AnalysisRequest = {
   kind: ExperimentKind;
   samples: RawSample[];
   calibrations: CalibrationProfile[];
+  primaryChannelId?: string;
   referenceChannelId?: string;
   analysis?: {
     maxFrequencyHz?: number;
@@ -108,6 +109,37 @@ export type ExperimentMetrics = {
   amplitudeStdDev: number;
   phaseDriftRad: number;
   decay: DecayFit | null;
+};
+
+export type PrecheckCategory = 'calibration-missing' | 'role-mismatch' | 'validity-overlap' | 'temperature-correction-invalid' | 'invalid-sample';
+export type PrecheckVerdict = 'ready' | 'fixable' | 'abort';
+
+export type PrecheckIssue = {
+  category: PrecheckCategory;
+  channelId: string;
+  startNs: number | null;
+  endNs: number | null;
+  sampleCount: number;
+  detail: string;
+  profileIds?: string[];
+};
+
+export type PrecheckChannelSummary = {
+  channelId: string;
+  totalSamples: number;
+  invalidSamples: number;
+  usableSamples: number;
+  firstTimestampNs: number | null;
+  lastTimestampNs: number | null;
+};
+
+export type PrecheckReport = {
+  experimentId: string;
+  verdict: PrecheckVerdict;
+  issues: PrecheckIssue[];
+  channels: PrecheckChannelSummary[];
+  totals: { samples: number; validSamples: number; invalidSamples: number; usableSamples: number };
+  reasons: string[];
 };
 
 export type AnalysisResult = {

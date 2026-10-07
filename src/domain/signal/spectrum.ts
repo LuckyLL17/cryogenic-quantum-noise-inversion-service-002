@@ -21,6 +21,7 @@ function averageBins(bins: SpectrumBin[][]): SpectrumBin[] {
 }
 
 export function periodogram(windows: WindowedSeries[], maxFrequencyHz = Number.POSITIVE_INFINITY): SpectrumBin[] {
+  invariant(maxFrequencyHz > 0 || maxFrequencyHz === Number.POSITIVE_INFINITY, 'INVALID_MAX_FREQUENCY', 'Maximum frequency must be positive');
   invariant(windows.length > 0, 'EMPTY_WINDOWS', 'At least one analysis window is required');
   const perWindow = windows.map((window) => {
     const transformed = dft(window.values);
@@ -35,6 +36,7 @@ export function periodogram(windows: WindowedSeries[], maxFrequencyHz = Number.P
 }
 
 export function crossSpectrum(left: WindowedSeries[], right: WindowedSeries[], maxFrequencyHz = Number.POSITIVE_INFINITY): CrossSpectrumBin[] {
+  invariant(maxFrequencyHz > 0 || maxFrequencyHz === Number.POSITIVE_INFINITY, 'INVALID_MAX_FREQUENCY', 'Maximum frequency must be positive');
   invariant(left.length === right.length && left.length > 0, 'CROSS_WINDOW_MISMATCH', 'Cross-spectrum requires paired windows');
   const spectra = left.map((leftWindow, windowIndex) => {
     const a = dft(leftWindow.values);

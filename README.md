@@ -18,5 +18,6 @@ npm start
 - `GET /v1/analyses/:id`：读取任务状态或结果
 - `POST /v1/analyses/:id/cancel`：取消排队或运行中的任务
 - `POST /v1/experiments/preview`：同步、校准并快速预览派生指标
+- `POST /v1/experiments/precheck`：提交前预检，复用分析请求的样本与校准配置，不执行频谱或衰减拟合，按通道和时间范围报告校准缺失、角色不匹配、有效期重叠、温度修正无效和 invalid sample，并给出 `ready`（可直接提交）/ `fixable`（修复后提交）/ `abort`（放弃）结论；预检不修改输入
 
 服务只使用内存任务存储；任务结果通过版本化的输入快照和校准版本引用保证可追溯。
