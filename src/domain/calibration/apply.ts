@@ -1,14 +1,30 @@
 import { DomainError, invariant } from '../errors.ts';
 import type { CalibrationProfile, RawSample, SynchronizedSample } from '../types.ts';
 
-function covers(profile: CalibrationProfile, sample: RawSample): boolean {
-  return profile.channelId === sample.channelId && sample.timestampNs >= profile.validFromNs && (profile.validToNs === undefined || sample.timestampNs < profile.validToNs) && (!profile.role || profile.role === sample.role);
+/** Profiles whose channel and validity window contain the sample, regardless of role. */
+export function candidatesForSample(sample: RawSample, profiles: CalibrationProfile[]): CalibrationProfile[] {
+  return profiles.filter((profile) => profile.channelId === sample.channelId && sample.timestampNs >= profile.validFromNs && (profile.validToNs === undefined || sample.timestampNs < profile.validToNs));
+}
+
+function roleMatches(profile: CalibrationProfile, sample: RawSample): boolean {
+  return !profile.role || profile.role === sample.role;
+}
+
+/** Deterministic tie-break used when several profiles cover the same sample. */
+export function pickProfile(profiles: CalibrationProfile[]): CalibrationProfile {
+  return [...profiles].sort((a, b) => Number(Boolean(b.role)) - Number(Boolean(a.role)) || b.validFromNs - a.validFromNs || b.profileId.localeCompare(a.profileId))[0];
+}
+
+/** Thermal scale for a sample; missing sample temperature defaults to the profile reference. */
+export function thermalScaleFor(sample: RawSample, profile: CalibrationProfile): number {
+  const temperature = sample.temperatureK ?? profile.referenceTemperatureK;
+  return 1 + profile.temperatureCoefficientPerK * (temperature - profile.referenceTemperatureK);
 }
 
 function chooseProfile(sample: RawSample, profiles: CalibrationProfile[]): CalibrationProfile {
-  const matches = profiles.filter((profile) => covers(profile, sample));
+  const matches = candidatesForSample(sample, profiles).filter((profile) => roleMatches(profile, sample));
   invariant(matches.length > 0, 'CALIBRATION_MISSING', 'No calibration profile covers sample', { captureId: sample.captureId, channelId: sample.channelId });
-  return [...matches].sort((a, b) => Number(Boolean(b.role)) - Number(Boolean(a.role)) || b.validFromNs - a.validFromNs || b.profileId.localeCompare(a.profileId))[0];
+  return pickProfile(matches);
 }
 
 function validateProfile(profile: CalibrationProfile): void {
@@ -24,8 +40,7 @@ export function applyCalibration(samples: RawSample[], profiles: CalibrationProf
   samples.forEach((sample, index) => {
     const profile = chooseProfile(sample, profiles);
     validateProfile(profile);
-    const temperature = sample.temperatureK ?? profile.referenceTemperatureK;
-    const thermalScale = 1 + profile.temperatureCoefficientPerK * (temperature - profile.referenceTemperatureK);
+    const thermalScale = thermalScaleFor(sample, profile);
     invariant(thermalScale > 0 && Number.isFinite(thermalScale), 'INVALID_THERMAL_SCALE', 'Temperature correction produced an invalid scale', { captureId: sample.captureId });
     const i0 = (sample.i - profile.iOffset) * profile.adcScale * thermalScale;
     const q0 = (sample.q - profile.qOffset) * profile.adcScale * thermalScale;

@@ -85,6 +85,7 @@ export type AnalysisRequest = {
   kind: ExperimentKind;
   samples: RawSample[];
   calibrations: CalibrationProfile[];
+  primaryChannelId?: string;
   referenceChannelId?: string;
   analysis?: {
     maxFrequencyHz?: number;
@@ -122,4 +123,63 @@ export type AnalysisResult = {
   noise: NoiseSummary;
   scanResults: Array<{ label: string; noise: NoiseSummary; decay: DecayFit | null }>;
   warnings: string[];
+};
+
+export type PrecheckConclusion = 'ready' | 'fix-required' | 'unusable';
+
+export type PrecheckIssueCode =
+  | 'CALIBRATION_MISSING'
+  | 'ROLE_MISMATCH'
+  | 'CALIBRATION_OVERLAP'
+  | 'INVALID_THERMAL_CORRECTION'
+  | 'INVALID_SAMPLE';
+
+export type PrecheckIssueSeverity = 'error' | 'warning';
+
+export type PrecheckFinding = {
+  code: PrecheckIssueCode;
+  severity: PrecheckIssueSeverity;
+  channelId: string;
+  startNs: number;
+  endNs: number;
+  sampleCount: number;
+  reason: string;
+  profileIds: string[];
+  captureIds: string[];
+  truncated: boolean;
+};
+
+export type PrecheckChannelReport = {
+  channelId: string;
+  role: ChannelRole | null;
+  startNs: number;
+  endNs: number;
+  sampleCount: number;
+  invalidSampleCount: number;
+  coveredSampleCount: number;
+  usableSampleCount: number;
+  crossingBoundary: boolean;
+  findings: PrecheckFinding[];
+};
+
+export type PrecheckReport = {
+  experimentId: string;
+  kind: ExperimentKind | null;
+  conclusion: PrecheckConclusion;
+  summary: {
+    sampleCount: number;
+    validSampleCount: number;
+    invalidSampleCount: number;
+    duplicateSampleCount: number;
+    channelCount: number;
+    evaluatedSampleCount: number;
+    coveredSampleCount: number;
+    blockedSampleCount: number;
+    findings: number;
+    errors: number;
+    warnings: number;
+  };
+  channels: PrecheckChannelReport[];
+  findings: PrecheckFinding[];
+  message: string;
 };

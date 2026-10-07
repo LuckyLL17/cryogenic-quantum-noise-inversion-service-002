@@ -24,12 +24,12 @@ function chooseChannel(samples: SynchronizedSample[], channelId?: string): Synch
   return result;
 }
 
-function pairReference(primary: SynchronizedSample[], samples: SynchronizedSample[], referenceChannelId?: string): SynchronizedSample[] {
-  if (!referenceChannelId) return [];
+function pairReference(primary: SynchronizedSample[], samples: SynchronizedSample[], referenceChannelId?: string, toleranceNs = 2_000): SynchronizedSample[] {
+  if (!referenceChannelId || primary.some((sample) => sample.channelId === referenceChannelId)) return [];
   const references = samples.filter((sample) => sample.channelId === referenceChannelId).sort((a, b) => a.timestampNs - b.timestampNs);
   return primary.map((anchor) => references.reduce<SynchronizedSample | null>((best, candidate) => {
     const distance = Math.abs(candidate.timestampNs - anchor.timestampNs);
-    if (distance > 2_000) return best;
+    if (distance > toleranceNs) return best;
     return !best || distance < Math.abs(best.timestampNs - anchor.timestampNs) ? candidate : best;
   }, null)).filter((sample): sample is SynchronizedSample => sample !== null);
 }
@@ -45,24 +45,27 @@ export function analyzeExperiment(request: AnalysisRequest): AnalysisResult {
   invariant(request.experimentId.length > 0, 'INVALID_EXPERIMENT_ID', 'Experiment id is required');
   const sync = synchronizeSamples(request.samples, request.analysis?.syncToleranceNs ?? 2_000);
   const calibrated = applyCalibration(sync.samples, request.calibrations);
-  const primary = chooseChannel(calibrated, request.referenceChannelId);
-  const reference = pairReference(primary, calibrated, request.referenceChannelId);
+  const primary = chooseChannel(calibrated, request.primaryChannelId);
+  const syncToleranceNs = request.analysis?.syncToleranceNs ?? 2_000;
+  const reference = pairReference(primary, calibrated, request.referenceChannelId, syncToleranceNs);
   const windowSize = request.analysis?.windowSize ?? Math.min(128, primary.length);
   const primarySeries = buildSeries(primary, (sample) => sample.amplitude);
   const primaryWindows = splitWindows(primarySeries, windowSize, request.analysis?.overlap ?? 0.5);
   const primarySpectrum = periodogram(primaryWindows, request.analysis?.maxFrequencyHz ?? Number.POSITIVE_INFINITY);
-  const referenceSpectrum = reference.length >= windowSize ? periodogram(splitWindows(buildSeries(reference, (sample) => sample.amplitude), windowSize, request.analysis?.overlap ?? 0.5), request.analysis?.maxFrequencyHz ?? Number.POSITIVE_INFINITY) : [];
-  const cross = reference.length >= windowSize ? crossSpectrum(primaryWindows, splitWindows(buildSeries(reference, (sample) => sample.amplitude), windowSize, request.analysis?.overlap ?? 0.5), request.analysis?.maxFrequencyHz ?? Number.POSITIVE_INFINITY) : [];
+  const referenceWindows = reference.length === primary.length ? splitWindows(buildSeries(reference, (sample) => sample.amplitude), windowSize, request.analysis?.overlap ?? 0.5) : [];
+  const cross = referenceWindows.length === primaryWindows.length ? crossSpectrum(primaryWindows, referenceWindows, request.analysis?.maxFrequencyHz ?? Number.POSITIVE_INFINITY) : [];
   const coherent = cross.length ? mean(cross.map((bin) => bin.coherence)) : null;
   const noise = summarizeNoise(primarySpectrum, coherent);
   const decay = request.kind === 'noise-only' ? null : fitExponential(primary, request.analysis?.fitStartNs, request.analysis?.fitEndNs);
   const amplitudes = primary.map((sample) => sample.amplitude);
   const phases = primary.map((sample) => sample.phaseRad);
-  const scanResults = (request.analysis?.scan ?? []).map((scan) => analyzeWindow(primary.filter((sample) => !scan.channelId || sample.channelId === scan.channelId), request, scan.startNs, scan.endNs)).map((item, index) => ({ label: request.analysis!.scan![index].label, noise: item.noise, decay: item.decay }));
+  const scanResults = (request.analysis?.scan ?? []).map((scan) => analyzeWindow(calibrated.filter((sample) => !scan.channelId || sample.channelId === scan.channelId), request, scan.startNs, scan.endNs)).map((item, index) => ({ label: request.analysis!.scan![index].label, noise: item.noise, decay: item.decay }));
   const calibrationVersions = [...new Set(calibrated.map((sample) => sample.calibrationProfileId))].sort();
+  const rawPhaseDrift = phases.at(-1)! - phases[0];
+  const phaseDriftRad = Math.atan2(Math.sin(rawPhaseDrift), Math.cos(rawPhaseDrift));
   return {
     analysisId: randomUUID(), experimentId: request.experimentId, kind: request.kind, inputDigest: digest(request), calibrationVersions,
-    metrics: { sampleCount: calibrated.length, channelCount: new Set(calibrated.map((sample) => sample.channelId)).size, durationNs: sync.samples.at(-1)!.timestampNs - sync.samples[0].timestampNs, triggerCount: sync.triggerCount, droppedSamples: sync.droppedSamples, medianSkewNs: sync.medianSkewNs, amplitudeMean: mean(amplitudes), amplitudeStdDev: stddev(amplitudes, mean(amplitudes)), phaseDriftRad: phases.at(-1)! - phases[0], decay },
-    primarySpectrum, crossSpectrum: cross, noise, scanResults, warnings: reference.length && reference.length !== primary.length ? ['Reference channel could not be paired for every primary sample'] : [],
+    metrics: { sampleCount: calibrated.length, channelCount: new Set(calibrated.map((sample) => sample.channelId)).size, durationNs: sync.samples.at(-1)!.timestampNs - sync.samples[0].timestampNs, triggerCount: sync.triggerCount, droppedSamples: sync.droppedSamples, medianSkewNs: sync.medianSkewNs, amplitudeMean: mean(amplitudes), amplitudeStdDev: stddev(amplitudes, mean(amplitudes)), phaseDriftRad, decay },
+    primarySpectrum, crossSpectrum: cross, noise, scanResults, warnings: request.referenceChannelId && reference.length !== primary.length ? ['Reference channel could not be paired for every primary sample'] : [],
   };
 }

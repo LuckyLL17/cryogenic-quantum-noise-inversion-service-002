@@ -1,7 +1,14 @@
 export class DomainError extends Error {
-  constructor(public readonly code: string, message: string, public readonly status = 422, public readonly details?: unknown) {
+  readonly code: string;
+  readonly status: number;
+  readonly details?: unknown;
+
+  constructor(code: string, message: string, status = 422, details?: unknown) {
     super(message);
     this.name = 'DomainError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
   }
 }
 
